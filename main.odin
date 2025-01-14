@@ -27,7 +27,7 @@ track_video_clip :: struct {
 	owner_track_index: int,
 }
 
-single_track :: struct {
+single_track :: distinct struct{
 	held_clips: [dynamic]track_video_clip,
 	using rect: ray.Rectangle,
 }
@@ -43,6 +43,7 @@ track_height := 100
 track_width := 70
 should_run_game := true
 bottom_of_bottom_track: f32 = 0
+undo_states: [dynamic][dynamic]single_track
 
 //dont try to calculate things here, do that in init
 track_y_pos := 0
@@ -107,13 +108,17 @@ init :: proc() {
 update :: proc() {
 	using ray
 	for should_run_game {
+		if (IsKeyDown(KeyboardKey.LEFT_CONTROL) && IsKeyPressed(KeyboardKey.Z)) {
+			restore_state()
+		}
 		game_logic()
 		run_drawing()
 		if WindowShouldClose() ||
 		   (IsKeyDown(KeyboardKey.LEFT_CONTROL) && IsKeyPressed(KeyboardKey.B)) ||
-		   (IsKeyDown(KeyboardKey.F8)) {
+		   IsKeyDown(KeyboardKey.F8) {
 			should_run_game = false
 		}
+
 	}
 	free_all(context.temp_allocator)
 }
@@ -139,22 +144,53 @@ move_clip_from_track_a_to_b :: proc(clip_to_move: ^track_video_clip, a, b: int) 
 	}
 }
 
+store_state :: proc() {
+	// TODO account for when more tracks are added at run time
+	new_state : [dynamic]single_track
+	for &old_track in all_tracks {
+		new_track : single_track
+		new_track.rect = old_track.rect
+		for clip in old_track.held_clips {
+			append(&new_track.held_clips, clip)
+		}
+		append(&new_state, new_track)
+	}
+	append(&undo_states, new_state)
+	log.info("stored state")
+}
+
+restore_state :: proc() {
+	if len(undo_states) == 0 {
+		return
+	}
+	log.info("restored state")
+	popped_state := pop(&undo_states)
+	all_tracks = popped_state
+}
+
+release_rectangle_as_needed :: proc() {
+	using ray
+	//release
+	// change the track that the clip is on
+	if IsMouseButtonDown(MouseButton.LEFT) {
+		return
+	}
+
+	if clip_being_dragged != nil && old_clip_being_dragged.y != clip_being_dragged.y {
+		move_clip_from_track_a_to_b(
+			clip_being_dragged,
+			old_clip_being_dragged.owner_track_index,
+			clip_being_dragged.owner_track_index,
+		)
+	}
+	for y in 0 ..< len(all_tracks) {
+		reorder_clips_on_track(y)
+	}
+}
+
 drag_rectangles :: proc() {
 	using ray
-	if !IsMouseButtonDown(MouseButton.LEFT) {
-		// change the track that the clip is on
-		if clip_being_dragged != nil && old_clip_being_dragged.y != clip_being_dragged.y {
-			move_clip_from_track_a_to_b(
-				clip_being_dragged,
-				old_clip_being_dragged.owner_track_index,
-				clip_being_dragged.owner_track_index,
-			)
-		}
-
-		for y in 0 ..< len(all_tracks) {
-			reorder_clips_on_track(y)
-		}
-	}
+	release_rectangle_as_needed()
 
 	if !IsMouseButtonDown(MouseButton.LEFT) {
 		clip_being_dragged = nil
@@ -167,6 +203,7 @@ drag_rectangles :: proc() {
 				if CheckCollisionPointRec(GetMousePosition(), clip.rect) &&
 				   IsMouseButtonDown(MouseButton.LEFT) &&
 				   clip_being_dragged == nil {
+					store_state()
 					clip_being_dragged = &clip
 					old_clip_being_dragged = clip
 					dragging_rect_starting_pos = Vector2{clip.x, clip.y}
@@ -199,7 +236,7 @@ reorder_clips_on_track :: proc(track_index: int) {
 	assert(track_index < len(all_tracks))
 
 	slice.sort_by_key(all_tracks[track_index].held_clips[:], proc(clip: track_video_clip) -> f32 {
-		return clip.x + clip.width / 2
+		return clip.x
 	})
 	for &clip, i in all_tracks[track_index].held_clips {
 		goal :=
@@ -253,8 +290,12 @@ run_drawing :: proc() {
 		DrawRectangleRec(clip_being_dragged.rect, Color{0, 0, 0, 40})
 		DrawRectangleLinesEx(clip_being_dragged.rect, 6, BLACK)
 	}
-	EndDrawing()
 
+	was_clicked := GuiButton(Rectangle{f32(screen_x_dim / 2), 0, 100, 50}, "Test123")
+	if was_clicked {
+		log.info("got clicked")
+	}
+	EndDrawing()
 }
 
 
