@@ -1,23 +1,11 @@
 package main
-/* 
-//uncomment this for web builds
 
-package game
-import "os"
-
-//run this:
-WEB:
-c:\Users\cobou\Documents\LanguagesRandom\odin\game_test\odin-raylib-web\source>cd c:\Users\cobou\Documents\LanguagesRandom\odin\game_test\odin-raylib-web && cmd /c "c:\Users\cobou\Documents\LanguagesRandom\odin\game_test\odin-raylib-web\build_web.bat" 
-
-DESKTOP
-c:\Users\cobou\Documents\LanguagesRandom\odin\game_test\odin-raylib-web\source>cd c:\Users\cobou\Documents\LanguagesRandom\odin\game_test\odin-raylib-web && cmd /c "c:\Users\cobou\Documents\LanguagesRandom\odin\game_test\odin-raylib-web\build_desktop.bat" && 
-build\desktop\game_desktop.exe
- */
 import "core:fmt"
 import "core:log"
 import "core:math/rand"
 import "core:slice"
 import "core:strings"
+import "core:sys/windows"
 import ray "vendor:raylib"
 
 track_video_clip :: struct {
@@ -25,9 +13,10 @@ track_video_clip :: struct {
 	color:             ray.Color,
 	draw_priority:     int,
 	owner_track_index: int,
+	text:              string,
 }
 
-single_track :: distinct struct{
+single_track :: distinct struct {
 	held_clips: [dynamic]track_video_clip,
 	using rect: ray.Rectangle,
 }
@@ -44,6 +33,8 @@ track_width := 70
 should_run_game := true
 bottom_of_bottom_track: f32 = 0
 undo_states: [dynamic][dynamic]single_track
+
+default_font := ray.GetFontDefault()
 
 //dont try to calculate things here, do that in init
 track_y_pos := 0
@@ -73,20 +64,20 @@ setup_all_tracks :: proc() {
 			append(
 				&all_tracks[y].held_clips,
 				track_video_clip {
-					rect              = Rectangle {
+					rect = Rectangle {
 						f32(x_pos_to_use),
 						cur_y_pos,
-						// f32(25 * u8(rand.float32() * 5 + 2)),
 						f32((y + 1) * 40),
 						f32(track_height),
 					},
-					color             = Color {
+					color = Color {
 						u8(rand.float32() * 255),
 						u8(rand.float32() * 255),
 						u8(rand.float32() * 255),
 						255,
 					},
 					owner_track_index = y,
+					text="PSD"
 				},
 			)
 		}
@@ -119,8 +110,8 @@ update :: proc() {
 			should_run_game = false
 		}
 
+		free_all(context.temp_allocator)
 	}
-	free_all(context.temp_allocator)
 }
 
 game_logic :: proc() {
@@ -146,9 +137,9 @@ move_clip_from_track_a_to_b :: proc(clip_to_move: ^track_video_clip, a, b: int) 
 
 store_state :: proc() {
 	// TODO account for when more tracks are added at run time
-	new_state : [dynamic]single_track
+	new_state: [dynamic]single_track
 	for &old_track in all_tracks {
-		new_track : single_track
+		new_track: single_track
 		new_track.rect = old_track.rect
 		for clip in old_track.held_clips {
 			append(&new_track.held_clips, clip)
@@ -170,7 +161,6 @@ restore_state :: proc() {
 
 release_rectangle_as_needed :: proc() {
 	using ray
-	//release
 	// change the track that the clip is on
 	if IsMouseButtonDown(MouseButton.LEFT) {
 		return
@@ -246,6 +236,15 @@ reorder_clips_on_track :: proc(track_index: int) {
 	}
 }
 
+// window_testing :: proc() {
+// 	ray.file
+// }
+
+get_rect_center :: proc(rect: ^ray.Rectangle) -> (ret : ray.Vector2) {
+	ret = {rect.x + rect.width / 2, rect.y + rect.height / 2}
+	return ret
+}
+
 run_drawing :: proc() {
 	using ray
 	BeginDrawing()
@@ -268,10 +267,27 @@ run_drawing :: proc() {
 	for &clip in all_clips {
 		DrawRectangleRec(clip.rect, clip.color)
 		DrawRectangleLinesEx(clip.rect, 3, BLACK)
+		// DrawText(fmt.caprint(clip.text), i32(clip.rect.x), i32(clip.rect.y), 30, BLACK)
+		// DrawTextPro(
+		// 	default_font,
+		// 	fmt.caprint(clip.text),
+		// 	// TODO: would want to add or subtract the length of the text
+		// 	// and use MeasureTextEx
+		// 	get_rect_center(&clip.rect),
+		// 	{0, 0},
+		// 	0,
+		// 	30,
+		// 	5,
+		// 	BLACK,
+		// )
 	}
+	// for i := 0; i < 100; i += 10 {
+	// 	DrawTextPro(default_font, "HI THERE", {f32(screen_x_dim / 2), f32(screen_y_dim / 2)}, {f32(i), 0},45, 50, 2, RED)
+	// }
+
 	if clip_being_dragged != nil {
 		words := strings.split(fmt.aprint(clip_being_dragged^, sep = "\n"), " ")
-		for word, y in words {
+		for &word, y in words {
 			DrawText(fmt.caprint(word), i32(screen_x_dim / 2), i32(50 + y * 20), 20, BLACK)
 		}
 	}
@@ -293,6 +309,19 @@ run_drawing :: proc() {
 
 	was_clicked := GuiButton(Rectangle{f32(screen_x_dim / 2), 0, 100, 50}, "Test123")
 	if was_clicked {
+		// using windows
+		// fileBuffer: wstring;
+		// openFileName: OPENFILENAMEW;
+		// openFileName.lStructSize = #sizeof(OPENFILENAMEW);
+		// openFileName.hwndOwner = nil; // No owner window
+		// // openFileName.lpstrFilter = c"All Files\0*.*\0Text Files\0*.txt\0\0";
+		// openFileName.lpstrFile = fileBuffer; // Assign the buffer for the file path
+		// openFileName.nMaxFile = 2;
+		// openFileName.lpstrTitle = "Select a File"
+		// // openFileName.Flags = 0x00000008; // OFN_PATHMUSTEXIST
+		// // log.info(windows.OpenClipboard(nil))
+		// windows.CreateWindowW(0, "test", "test2", 100, 100, 20, 80, nil, nil, nil, nil)
+
 		log.info("got clicked")
 	}
 	EndDrawing()
