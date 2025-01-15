@@ -5,7 +5,7 @@ import "core:log"
 import "core:math/rand"
 import "core:slice"
 import "core:strings"
-import "core:sys/windows"
+// import "core:sys/windows"
 import ray "vendor:raylib"
 
 track_video_clip :: struct {
@@ -34,10 +34,13 @@ should_run_game := true
 bottom_of_bottom_track: f32 = 0
 undo_states: [dynamic][dynamic]single_track
 
+click_sound : ray.Sound
+
+
 default_font := ray.GetFontDefault()
-cur_level: u64 = 2
+cur_level: u64 = 0
 // TODO: change to false before release
-has_dragged := true
+has_dragged := false
 //dont try to calculate things here, do that in init
 track_y_pos := 0
 highest_draw_priority := 1
@@ -60,7 +63,7 @@ single_level_settings :: struct {
 all_levels_settings: [5]single_level_settings
 
 main :: proc() {
-	context.logger = log.create_console_logger()
+	// context.logger = log.create_console_logger()
 	init()
 	update()
 	shutdown()
@@ -77,6 +80,7 @@ init :: proc() {
 	ray.SetTargetFPS(60)
 	theme_colors = {red_color, orange_color, yellow_color, blue_color, green_color, teal_color}
 
+	click_sound = LoadSound("assets/click.wav")
 	all_levels_settings[0] = single_level_settings {
 		total_tiles = 5,
 	}
@@ -120,7 +124,7 @@ setup_all_tracks :: proc() {
 				rect = Rectangle{starting_x, cur_y_pos, f32(screen_x_dim), f32(track_height)},
 			},
 		)
-		log.info(all_levels_settings[cur_level].total_tiles)
+		// log.info(all_levels_settings[cur_level].total_tiles)
 		for x in 0 ..< all_levels_settings[cur_level].total_tiles / 2 + uint(y % 2) {
 			x_pos_to_use :=
 				starting_x if x == 0 else all_tracks[y].held_clips[x - 1].rect.x + all_tracks[y].held_clips[x - 1].rect.width
@@ -168,6 +172,9 @@ game_logic :: proc() {
 	if IsKeyPressed(KeyboardKey.R) {
 		setup_all_tracks()
 	}
+	if cur_level == 2 {
+		return
+	}
 	drag_rectangles()
 }
 
@@ -196,14 +203,14 @@ store_state :: proc() {
 		append(&new_state, new_track)
 	}
 	append(&undo_states, new_state)
-	log.info("stored state")
+	// log.info("stored state")
 }
 
 restore_state :: proc() {
 	if len(undo_states) == 0 {
 		return
 	}
-	log.info("restored state")
+	// log.info("restored state")
 	popped_state := pop(&undo_states)
 	all_tracks = popped_state
 }
@@ -244,6 +251,7 @@ drag_rectangles :: proc() {
 				   IsMouseButtonDown(MouseButton.LEFT) &&
 				   clip_being_dragged == nil {
 					store_state()
+					PlaySound(click_sound)
 					clip_being_dragged = &clip
 					old_clip_being_dragged = clip
 					dragging_rect_starting_pos = Vector2{clip.x, clip.y}
@@ -339,7 +347,18 @@ check_top_view :: proc() -> bool {
 run_drawing :: proc() {
 	using ray
 	BeginDrawing()
+	defer EndDrawing()
 	ClearBackground(BLACK)
+	if cur_level == 2 {
+		DrawText(
+			"You win!\n\nI ran out of time (I found out about the jam\nat 9 pm local time, with 9 hours until the deadline).\nI just so happened to start a project a \nfew days ago that could be made to fit the theme, and here\n we are. I didn't want to stay up much past 11 :-)",
+			10,
+			i32(all_tracks[len(all_tracks) - 1].y) - 100,
+			30,
+			WHITE,
+		)
+		return
+	}
 	//instructions:
 	if !has_dragged {
 		DrawText(
@@ -392,7 +411,7 @@ run_drawing :: proc() {
 	// }
 
 	if check_right_view() && check_top_view() {
-		log.info("win")
+		advance_level()
 	}
 
 	all_clips: [dynamic]track_video_clip
@@ -416,7 +435,7 @@ run_drawing :: proc() {
 		DrawRectangleLinesEx(clip_being_dragged.rect, 6, BLACK)
 	}
 
-	EndDrawing()
+	
 }
 
 
